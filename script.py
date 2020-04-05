@@ -8,6 +8,7 @@ from telegram.client import Telegram
 import csv
 from datetime import datetime
 import numpy as np
+import os
 
 
 def timestamp_to_date(ts: int) -> str:
@@ -53,7 +54,6 @@ if __name__ == '__main__':
         offset_chat_id = 0
         chat_ids = list()
         old_len = -1
-        # Optional: Only get chats with type Supergroup
         while True:
             # get chat_ids from current offset_order, offset_chat_id
             res = tg.get_chats(offset_order=offset_order, offset_chat_id=offset_chat_id, limit=100)
@@ -77,8 +77,7 @@ if __name__ == '__main__':
         return chat_ids
 
 
-    # blacklist = [("Gil's Gang", -1001458106605), ("Hilfestellung", -1001166164071), ("Umzug bitches", -1001376933463)]
-    def extract_crypto_chats(chat_ids):
+    def extract_supergroup_chats(chat_ids):
         """ chat keys
             dict_keys(
             ['@type', 'id', 'type', 'chat_list', 'title', 'photo', 'permissions', 'last_message', 'order',
@@ -89,20 +88,13 @@ if __name__ == '__main__':
             'pinned_message_id', 'reply_markup_message_id', 'client_data', '@extra'])
         """
         crypto_chat_candidates = list()
-        i = 0
         for id in chat_ids:
             res = tg.get_chat(id)
             res.wait()
             chat = res.update
-            if i == 0:
-                pass
-                # print(chat.keys())
-                # print(chat['chat_list'])
-            # print(f'chat["type"] = {chat["type"]}')
             if chat['type']['@type'] == 'chatTypeSupergroup':
-                crypto_chat_candidates.append(chat)
-            i += 1
-        # remove supergroups that are not cryptochannels, if any
+                if not chat['type']['is_channel']:
+                    crypto_chat_candidates.append(chat)
         return crypto_chat_candidates
 
 
@@ -161,18 +153,24 @@ if __name__ == '__main__':
 
 
     chat_ids = get_all_chat_ids()
-    print(chat_ids)
-    # crypto_chats = extract_crypto_chats(chat_ids)
-    # for chat in crypto_chats:
-    #     print(f'getting history for chat: {chat["title"]}...')
-    #
-    #     hist = get_chat_history(chat)
-    #     if hist:
-    #         hist[0]['forward_info'] = ''
-    #         hist[0]['reply_markup'] = ''
-    #         keys = hist[0].keys()
-    #         with open(f'{chat["title"]}.csv', 'w') as output_file:
-    #             print(f'Writing history of {chat["title"]} to .csv file...')
-    #             dict_writer = csv.DictWriter(output_file, keys)
-    #             dict_writer.writeheader()
-    #             dict_writer.writerows(hist)
+    crypto_chats = extract_supergroup_chats(chat_ids)
+    for chat in crypto_chats:
+        # If no csv file for current history exists yet
+        if not os.path.isfile(f'{chat["title"]}.csv'):
+            print(f'getting history for chat: {chat["title"]}...')
+            hist = get_chat_history(chat)
+            if hist:
+                hist[0]['forward_info'] = ''
+                hist[0]['reply_markup'] = ''
+                keys = hist[0].keys()
+                # Create csv file for chat history
+                with open(f'{chat["title"]}.csv', 'w') as output_file:
+                    print(f'Writing history of {chat["title"]} to .csv file...')
+                    dict_writer = csv.DictWriter(output_file, keys)
+                    dict_writer.writeheader()
+                    dict_writer.writerows(hist)
+            else:
+                print(f'...History for chat {chat["title"]} is None')
+        else:
+            print(f'Skipping group {chat["title"]} because .csv file exists already')
+
