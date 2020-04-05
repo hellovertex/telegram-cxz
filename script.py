@@ -8,22 +8,11 @@ from telegram.client import Telegram
 import csv
 from datetime import datetime
 import numpy as np
-"""
 
-'MIIBCgKCAQEAwVACPi9w23mF3tBkdZz+zwrzKOaaQdr01vAbU4E1pvkfj4sqDsm6
-lyDONS789sVoD/xCS9Y0hkkC3gtL1tSfTlgCMOOul9lcixlEKzwKENj1Yz/s7daS
-an9tqw3bfUV/nqgbhGX81v/+7RFAEd+RwFnK7a+XYl9sluzHRyVVaTTveB2GazTw
-Efzk2DWgkBluml8OREmvfraX3bkHZJTKX4EQSjBbbdJ2ZXIsRrYOXfaA+xayEGB+
-8hdlLmAjbCVfaigxX0CDqWeR1yFL9kwd9P0NsZRPsmoqVwMbMu7mStFai6aIhc3n
-Slv8kg9qv1m6XHVQY3PnEw+QQtqSIXklHwIDAQAB'
-
-python script.py 
-
-
-"""
 
 def timestamp_to_date(ts: int) -> str:
     return datetime.utcfromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+
 
 def setup_logging(level=logging.INFO):
     root = logging.getLogger()
@@ -35,59 +24,29 @@ def setup_logging(level=logging.INFO):
     root.addHandler(ch)
 
 
-def retreive_messages(telegram, chat_id, receive_limit):
-    receive = True
-    from_message_id = 0
-    stats_data = {}
-
-    while receive:
-        response = telegram.get_chat_history(
-            chat_id=chat_id,
-            limit=1000,
-            from_message_id=from_message_id,
-        )
-        print(str(response))
-        response.wait()
-        print(str(response))
-        for message in response.update['messages']:
-            if message['content']['@type'] == 'messageText':
-                stats_data[message['id']] = message['content']['text']['text']
-            from_message_id = message['id']
-
-        total_messages = len(stats_data)
-        if total_messages > receive_limit or not response.update['total_count']:
-            receive = False
-
-        print(f'[{total_messages}/{receive_limit}] received')
-
-    return stats_data
-
-
-def print_stats(stats_data, most_common_count):
-    words = Counter()
-    translator = str.maketrans('', '', string.punctuation)
-    for _, message in stats_data.items():
-        for word in message.split(' '):
-            word = word.translate(translator).lower()
-            if len(word) > 3:
-                words[word] += 1
-
-    for word, count in words.most_common(most_common_count):
-        print(f'{word}: {count}')
-
-
 if __name__ == '__main__':
     setup_logging(level=logging.INFO)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('api_id', help='API id', type=int)  # https://my.telegram.org/apps
+    parser.add_argument('api_hash', help='API hash')
+    parser.add_argument('phone', help='Phone')
+    parser.add_argument('--lib_path', help='path to libtdjson.so.1.6.0', type=str,
+                        default='/home/hellovertex/Documents/github.com/tdlib/td/tdlib/lib/libtdjson.so.1.6.0')
+    args = parser.parse_args()
 
+    print(f'api_id = {args.api_id}, type={type(args.api_id)}')
+    print(f'api_hash = {args.api_hash}, type={type(args.api_hash)}')
+    print(f'phone = {args.phone}, type={type(args.phone)}')
     tg = Telegram(
-        api_id=123456789,
-        api_hash='hash',
-        phone='phone',
-        library_path='lib_path',
-        database_encryption_key='changeMe'
+        api_id=args.api_id,
+        api_hash=args.api_hash,
+        phone=args.phone,
+        library_path=args.lib_path,
+        database_encryption_key='hanabi',
     )
     # you must call login method before others
     tg.login()
+
 
     def get_all_chat_ids():
         offset_order = 9223372036854775807
@@ -116,8 +75,9 @@ if __name__ == '__main__':
                 break
             old_len = new_len
         return chat_ids
+
+
     # blacklist = [("Gil's Gang", -1001458106605), ("Hilfestellung", -1001166164071), ("Umzug bitches", -1001376933463)]
-    # assumes the supgergroups of interest are archived
     def extract_crypto_chats(chat_ids):
         """ chat keys
             dict_keys(
@@ -145,6 +105,7 @@ if __name__ == '__main__':
         # remove supergroups that are not cryptochannels, if any
         return crypto_chat_candidates
 
+
     def get_chat_history(chat_obj):
         """ supergroup keys
             dict_keys(
@@ -154,6 +115,7 @@ if __name__ == '__main__':
              'is_all_history_available', 'sticker_set_id', 'invite_link', 'upgraded_from_basic_group_id',
              'upgraded_from_max_message_id', '@extra'])
         """
+
         def _get_history(id):
             from_message_id = 0
             offset = 0
@@ -165,6 +127,8 @@ if __name__ == '__main__':
                 res = tg.get_chat_history(id, limit=100, from_message_id=from_message_id, offset=0)
                 res.wait()
                 msgs = res.update['messages']
+                if not msgs:
+                    break
                 first = msgs[0]
                 last = msgs[-1]
                 from_message_id = last['id']
@@ -174,8 +138,7 @@ if __name__ == '__main__':
                 have_duplicates = bool(int(np.sum(ids == old_ids)))
                 assert not have_duplicates
                 old_ids = ids
-                if len(msgs) < 1:
-                    completed = True
+                # todo consider writing directly to file instead
                 messages += msgs
                 print(f'total number of messages fetched = {len(messages)}')
                 time.sleep(.5)
@@ -196,30 +159,20 @@ if __name__ == '__main__':
 
         return hist
 
+
     chat_ids = get_all_chat_ids()
-    crypto_chats = extract_crypto_chats(chat_ids)
-    histories = list()
-    hist = get_chat_history(crypto_chats[0])
-    keys = hist[0].keys()
-    # todo rename file according to chat id
-    with open('example.csv', 'wb') as output_file:
-        dict_writer = csv.DictWriter(output_file, keys)
-        dict_writer.writeheader()
-        dict_writer.writerows(hist)
-    # stats_data = retreive_messages(
-    #     telegram=tg,
-    #     #chat_id=args.chat_id,
-    #     chat_id=1,
-    #     #receive_limit=args.limit,
-    #     receive_limit=1000,
-    # )
+    print(chat_ids)
+    # crypto_chats = extract_crypto_chats(chat_ids)
+    # for chat in crypto_chats:
+    #     print(f'getting history for chat: {chat["title"]}...')
     #
-    # print_stats(
-    #     stats_data=stats_data,
-    #     # most_common_count=args.most_common,
-    #     most_common_count=30,
-    # )
-
-
-
-
+    #     hist = get_chat_history(chat)
+    #     if hist:
+    #         hist[0]['forward_info'] = ''
+    #         hist[0]['reply_markup'] = ''
+    #         keys = hist[0].keys()
+    #         with open(f'{chat["title"]}.csv', 'w') as output_file:
+    #             print(f'Writing history of {chat["title"]} to .csv file...')
+    #             dict_writer = csv.DictWriter(output_file, keys)
+    #             dict_writer.writeheader()
+    #             dict_writer.writerows(hist)
