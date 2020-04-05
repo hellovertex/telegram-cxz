@@ -148,6 +148,10 @@ if __name__ == '__main__':
         if group['is_all_history_available'] and group['member_count'] >= 500 and not is_channel:
             # get chat_history
             hist = _get_history(chat_obj['id'])
+        else:
+            skip_reason = f'group member count is too low: {group["member_count"]}' if group[
+                'is_all_history_available'] else f'history is not available or group is channel'
+            print('...Skipping chat because ' + skip_reason)
 
         return hist
 
@@ -173,4 +177,3 @@ if __name__ == '__main__':
                 print(f'...History for chat {chat["title"]} is None')
         else:
             print(f'Skipping group {chat["title"]} because .csv file exists already')
-
